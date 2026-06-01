@@ -8,11 +8,14 @@ import PredictionBottomBar from "./PredictionBottomBar.astro";
 import fixtureData from "../../data/fixture.json";
 import groupsData from "../../data/groups.json";
 import playersData from "../../data/players.json";
+import h2hData from "../../data/match-h2h-fifa-wikipedia.json";
+import teamInfoData from "../../data/equipos-info.json";
 import resetStateUrl from "../../lib/storage/resetPollaState.js?url";
 import playerIdentityUrl from "../../lib/playerIdentity.js?url";
 import prediccionesClientUrl from "./predicciones.client.js?url";
 import predValidationUrl from "./predicciones.validation.js?url";
 import predExportUrl from "./predicciones.export.js?url";
+import predStandingsUrl from "./predicciones.standings.js?url";
 
 interface Team {
   id: string;
@@ -63,6 +66,9 @@ const clientPayload = {
   playerIdentityUrl,
   validationUrl: predValidationUrl,
   exportUrl: predExportUrl,
+  standingsUrl: predStandingsUrl,
+  h2hData,
+  teamInfoData,
 };
 ---
 
