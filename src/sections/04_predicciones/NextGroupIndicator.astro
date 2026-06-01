@@ -12,11 +12,11 @@ const { group } = Astro.props;
 const groupKey = group?.id.toLowerCase() ?? "review";
 ---
 
-<div class="next-group-indicator" data-next-group-indicator data-next-group={groupKey}>
+<button class="next-group-indicator" type="button" data-next-group-indicator data-next-group={groupKey}>
   <span>Siguiente:</span>
   <strong data-next-group-label>{group ? group.label : "Revisión"}</strong>
   <span aria-hidden="true">›</span>
-</div>
+</button>
 
 <style>
   .next-group-indicator {
@@ -29,12 +29,42 @@ const groupKey = group?.id.toLowerCase() ?? "review";
     justify-content: center;
     gap: 0.55rem;
     min-height: 3.35rem;
+    width: 100%;
     padding: 0.65rem 1rem;
     border: 2px solid var(--next-color);
     border-radius: var(--radius-md);
     background: linear-gradient(135deg, var(--next-color), var(--next-color-2));
     color: var(--next-text);
     box-shadow: var(--pm-shadow-blue);
+    cursor: pointer;
+    transition:
+      transform var(--pm-transition-fast),
+      box-shadow var(--pm-transition-fast),
+      filter var(--pm-transition-fast);
+  }
+
+  .next-group-indicator:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px rgba(18, 109, 255, 0.32);
+  }
+
+  .next-group-indicator:focus-visible {
+    outline: none;
+    box-shadow: var(--pm-focus-ring);
+  }
+
+  .next-group-indicator:disabled {
+    cursor: not-allowed;
+    filter: grayscale(0.4) opacity(0.6);
+    box-shadow: none;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .next-group-indicator,
+    .next-group-indicator:hover {
+      transform: none;
+    }
   }
 
   .next-group-indicator[data-next-group="a"] { --next-color: #22C55E; --next-color-2: #16A34A; }

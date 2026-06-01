@@ -1,8 +1,6 @@
 ---
 import MatchesPanel from "./MatchesPanel.astro";
 import QualifiedPanel from "./QualifiedPanel.astro";
-import RandomResultsButton from "./RandomResultsButton.astro";
-import HelpCard from "./HelpCard.astro";
 
 interface Team {
   id: string;
@@ -32,7 +30,6 @@ interface Props {
 
 const { matches, groups, activeGroupId } = Astro.props;
 const activeGroup = groups.find((group) => group.id === activeGroupId) ?? groups[0];
-const showDevTools = import.meta.env.DEV;
 ---
 
 <div class="prediction-workspace" data-animate="fade-up" style="--i:2">
@@ -40,15 +37,13 @@ const showDevTools = import.meta.env.DEV;
 
   <aside class="side-panel">
     <QualifiedPanel group={activeGroup} />
-    {showDevTools && <RandomResultsButton />}
-    <HelpCard />
   </aside>
 </div>
 
 <style>
   .prediction-workspace {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(17rem, 0.34fr);
+    grid-template-columns: minmax(0, 1fr) minmax(20.5rem, 0.42fr);
     gap: clamp(0.85rem, 1.6vw, 1.25rem);
     align-items: start;
     min-width: 0;

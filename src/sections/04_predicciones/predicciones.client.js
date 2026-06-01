@@ -30,6 +30,8 @@
   const groups = payload.groups ?? [];
   const matches = payload.matches ?? [];
   const players = payload.players ?? [];
+  const h2hData = payload.h2hData ?? {};
+  const teamInfoData = payload.teamInfoData ?? {};
   const defaultPlayerId = payload.defaultPlayerId ?? "";
 
   const groupById = new Map(groups.map((group) => [group.id, group]));
@@ -51,6 +53,7 @@
   // sigue funcionando para completar; solo se desactiva la descarga final.
   let validationModule = null;
   let exportModule = null;
+  let standingsModule = null;
   if (payload.validationUrl) {
     try {
       validationModule = await import(payload.validationUrl);
@@ -65,6 +68,13 @@
       // Sin exportacion, no se puede generar el JSON; el boton queda bloqueado.
     }
   }
+  if (payload.standingsUrl) {
+    try {
+      standingsModule = await import(payload.standingsUrl);
+    } catch {
+      // Sin standings, se mantiene la captura de marcadores pero no se autocalculan clasificados.
+    }
+  }
 
   const tabs = Array.from(section.querySelectorAll("[data-group-tab]"));
   const matchGroups = Array.from(section.querySelectorAll("[data-match-group]"));
@@ -73,11 +83,11 @@
   const playerStatusNode = section.querySelector("[data-active-player-status]");
   const playerStatusCard = section.querySelector("[data-player-status-card]");
   const matchesTitle = section.querySelector("[data-matches-title]");
-  const firstSelect = section.querySelector('[data-qualified-select="first"]');
-  const secondSelect = section.querySelector('[data-qualified-select="second"]');
-  const firstLabel = section.querySelector('[data-qualified-label="first"]');
-  const secondLabel = section.querySelector('[data-qualified-label="second"]');
-  const qualifiedError = section.querySelector("[data-qualified-error]");
+  const qualifiedTitle = section.querySelector("[data-qualified-title]");
+  const qualifiedCompleteNode = section.querySelector("[data-qualified-complete]");
+  const qualifiedTotalNode = section.querySelector("[data-qualified-total]");
+  const standingsBody = section.querySelector("[data-standings-body]");
+  const qualifiedSummary = section.querySelector("[data-qualified-summary]");
   const randomButton = section.querySelector("[data-random-results]");
   const backButton = section.querySelector("[data-back-group]");
   const saveButton = section.querySelector("[data-save-continue]");
@@ -360,29 +370,6 @@
     return qualified[groupId];
   };
 
-  const hasDuplicateQualified = () => {
-    const first = firstSelect?.value ?? "";
-    const second = secondSelect?.value ?? "";
-    return Boolean(first && second && first === second);
-  };
-
-  const validateQualified = () => {
-    const duplicate = hasDuplicateQualified();
-    if (qualifiedError) qualifiedError.hidden = !duplicate;
-    if (firstSelect) firstSelect.dataset.error = duplicate ? "true" : "false";
-    if (secondSelect) secondSelect.dataset.error = duplicate ? "true" : "false";
-    return !duplicate;
-  };
-
-  const storeQualified = () => {
-    const groupId = activeGroupId;
-    const qualified = getQualifiedForGroup(groupId);
-    qualified.firstPlaceTeamId = firstSelect?.value || null;
-    qualified.secondPlaceTeamId = secondSelect?.value || null;
-    validateQualified();
-    persist();
-  };
-
   const qualifiedComplete = (groupId) => {
     const qualified = getPlayerQualified()[groupId];
     return Boolean(
@@ -390,6 +377,54 @@
       qualified?.secondPlaceTeamId &&
       qualified.firstPlaceTeamId !== qualified.secondPlaceTeamId
     );
+  };
+
+  const calculateStandingsForGroup = (groupId) => {
+    const group = groupById.get(groupId);
+    if (!standingsModule?.calculateGroupStandings || !group) {
+      return {
+        groupId,
+        completedMatches: completeMatchesForGroup(groupId),
+        totalMatches: getGroupMatches(groupId).length,
+        isComplete: false,
+        standings: (group?.teams ?? []).map((team, index) => ({
+          teamId: team.id,
+          name: team.name,
+          shortCode: team.shortCode,
+          rank: index + 1,
+          qualified: index < 2,
+          played: 0,
+          won: 0,
+          drawn: 0,
+          lost: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          goalDifference: 0,
+          points: 0,
+        })),
+      };
+    }
+    return standingsModule.calculateGroupStandings(group, getGroupMatches(groupId), getPlayerPredictions());
+  };
+
+  const syncAutomaticQualifiedForGroup = (groupId) => {
+    const result = calculateStandingsForGroup(groupId);
+    const qualified = getQualifiedForGroup(groupId);
+
+    if (standingsModule?.getAutomaticQualified && result.isComplete) {
+      const automatic = standingsModule.getAutomaticQualified(result);
+      qualified.firstPlaceTeamId = automatic.firstPlaceTeamId;
+      qualified.secondPlaceTeamId = automatic.secondPlaceTeamId;
+    } else {
+      qualified.firstPlaceTeamId = null;
+      qualified.secondPlaceTeamId = null;
+    }
+
+    return result;
+  };
+
+  const syncAllAutomaticQualified = () => {
+    groups.forEach((group) => syncAutomaticQualifiedForGroup(group.id));
   };
 
   const getActivePlayerObject = () => {
@@ -401,6 +436,8 @@
 
   const runFullValidation = () => {
     if (!validationModule?.validateFullPrediction) return null;
+    syncAllAutomaticQualified();
+    writeJson(storageKeys.qualified, allQualified);
     return validationModule.validateFullPrediction(
       getPlayerPredictions(),
       getPlayerQualified(),
@@ -417,9 +454,6 @@
       row.querySelectorAll("[data-score-input]").forEach((input) => {
         input.disabled = true;
       });
-    });
-    [firstSelect, secondSelect].forEach((select) => {
-      if (select) select.disabled = true;
     });
     if (randomButton) randomButton.disabled = true;
   };
@@ -518,6 +552,7 @@
     const totalComplete = completeMatchesTotal();
     const activeGroup = getActiveGroup();
 
+    renderQualifiedStandings();
     setProgress("general", totalComplete, matches.length);
     setProgress("group", groupComplete, 6);
 
@@ -539,39 +574,56 @@
     if (bottomGroupComplete) bottomGroupComplete.textContent = String(groupComplete);
 
     const next = groups[groupIndex(activeGroupId) + 1] ?? null;
-    if (nextGroupIndicator) nextGroupIndicator.dataset.nextGroup = next ? next.id.toLowerCase() : "review";
+    if (nextGroupIndicator) {
+      nextGroupIndicator.dataset.nextGroup = next ? next.id.toLowerCase() : "review";
+      nextGroupIndicator.disabled = !next;
+    }
     applyGroupColor(nextGroupIndicator, "next", next?.id ?? "review");
     if (nextGroupLabel) nextGroupLabel.textContent = next ? next.label : "Revisión";
 
     refreshSubmitState(full);
   };
 
-  const renderQualifiedOptions = () => {
+  const renderQualifiedStandings = () => {
     const activeGroup = getActiveGroup();
-    const qualified = getQualifiedForGroup(activeGroup.id);
+    const result = syncAutomaticQualifiedForGroup(activeGroup.id);
+    if (qualifiedTitle) qualifiedTitle.textContent = `TABLA ${activeGroup.label}`;
+    if (qualifiedCompleteNode) qualifiedCompleteNode.textContent = String(result.completedMatches);
+    if (qualifiedTotalNode) qualifiedTotalNode.textContent = String(result.totalMatches || 6);
 
-    const renderSelect = (select, selectedValue) => {
-      if (!select) return;
-      select.innerHTML = "";
-      const emptyOption = document.createElement("option");
-      emptyOption.value = "";
-      emptyOption.textContent = "Selecciona equipo";
-      select.append(emptyOption);
-
-      activeGroup.teams.forEach((team) => {
-        const option = document.createElement("option");
-        option.value = team.id;
-        option.textContent = team.name;
-        select.append(option);
+    if (standingsBody) {
+      standingsBody.innerHTML = "";
+      result.standings.forEach((row) => {
+        const item = document.createElement("div");
+        item.className = "standings-row";
+        item.dataset.qualified = row.qualified && result.isComplete ? "true" : "false";
+        item.setAttribute("role", "row");
+        // El CSS scoped de Astro no alcanza al DOM inyectado por innerHTML, y
+        // una custom property scoped (var) no hereda hasta aqui; por eso la
+        // grilla se fija inline con columnas LITERALES (POS·EQUIPO·PTS·DG·GF).
+        // Debe coincidir con .standings-head y .standings-row en QualifiedPanel.
+        item.style.display = "grid";
+        item.style.gridTemplateColumns = "2.2rem minmax(0, 1fr) 2.1rem 2.1rem 2.1rem";
+        item.style.alignItems = "center";
+        item.innerHTML = `
+          <span class="rank-badge" role="cell">${row.rank}°</span>
+          <span class="team-cell" role="cell" title="${row.name}">${row.name}</span>
+          <span class="number-cell" role="cell">${row.points}</span>
+          <span class="number-cell" role="cell">${row.goalDifference > 0 ? "+" : ""}${row.goalDifference}</span>
+          <span class="number-cell" role="cell">${row.goalsFor}</span>
+        `;
+        standingsBody.append(item);
       });
-      select.value = selectedValue ?? "";
-    };
+    }
 
-    if (firstLabel) firstLabel.textContent = `1° del ${activeGroup.label}`;
-    if (secondLabel) secondLabel.textContent = `2° del ${activeGroup.label}`;
-    renderSelect(firstSelect, qualified.firstPlaceTeamId);
-    renderSelect(secondSelect, qualified.secondPlaceTeamId);
-    validateQualified();
+    if (qualifiedSummary) {
+      const [first, second] = result.standings;
+      qualifiedSummary.textContent = result.isComplete && first && second
+        ? `Clasifican: ${first.name} y ${second.name}.`
+        : `Completa los ${result.totalMatches || 6} marcadores para calcular 1° y 2° automaticamente.`;
+    }
+
+    writeJson(storageKeys.qualified, allQualified);
   };
 
   const updatePlayerBadge = () => {
@@ -627,7 +679,7 @@
 
     const activeGroup = getActiveGroup();
     if (matchesTitle) matchesTitle.textContent = activeGroup.label.toUpperCase();
-    renderQualifiedOptions();
+    renderQualifiedStandings();
     updateProgress();
     persist({ includeActiveGroup: persistActiveGroup });
   };
@@ -637,15 +689,21 @@
 
   const randomizeActiveGroup = () => {
     const rows = matchRows.filter((row) => row.dataset.groupId === activeGroupId);
+    const generatedScores = standingsModule?.generateWeightedRandomScores
+      ? standingsModule.generateWeightedRandomScores(getGroupMatches(activeGroupId), h2hData, teamInfoData)
+      : {};
     rows.forEach((row) => {
+      const matchId = rowMatchId(row);
+      const generated = generatedScores[matchId];
       const homeInput = row.querySelector('[data-score-input="home"]');
       const awayInput = row.querySelector('[data-score-input="away"]');
-      if (homeInput) homeInput.value = String(Math.floor(Math.random() * 7));
-      if (awayInput) awayInput.value = String(Math.floor(Math.random() * 7));
+      if (homeInput) homeInput.value = String(generated?.homeScore ?? Math.floor(Math.random() * 4));
+      if (awayInput) awayInput.value = String(generated?.awayScore ?? Math.floor(Math.random() * 4));
       storeRowPrediction(row);
     });
+    renderQualifiedStandings();
     updateProgress();
-    setMessage(`Marcadores cargados para el Grupo ${activeGroupId}. Revisa clasificados antes de guardar.`);
+    setMessage(`Marcadores ponderados cargados para el Grupo ${activeGroupId}. La tabla de clasificados se recalculo automaticamente.`);
   };
 
   matchRows.forEach((row) => {
@@ -670,13 +728,6 @@
     });
   });
 
-  [firstSelect, secondSelect].forEach((select) => {
-    select?.addEventListener("change", () => {
-      storeQualified();
-      updateProgress();
-    });
-  });
-
   randomButton?.addEventListener("click", randomizeActiveGroup);
 
   backButton?.addEventListener("click", () => {
@@ -687,6 +738,16 @@
     }
     showActiveGroup(previous.id);
     setMessage(`Volviste a ${previous.label}.`);
+  });
+
+  nextGroupIndicator?.addEventListener("click", () => {
+    const next = groups[groupIndex(activeGroupId) + 1];
+    if (!next) {
+      setMessage("Ya estás en el último grupo (L).");
+      return;
+    }
+    showActiveGroup(next.id);
+    setMessage(`Avanzaste a ${next.label}.`);
   });
 
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

@@ -1,6 +1,4 @@
 ---
-import QualifiedSelect from "./QualifiedSelect.astro";
-
 interface Team {
   id: string;
   name: string;
@@ -30,13 +28,43 @@ const { group } = Astro.props;
         <path d="M6.5 19h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </span>
-    <h2 id="qualified-title">CLASIFICADOS</h2>
+    <div class="panel-title-text">
+      <h2 id="qualified-title" data-qualified-title>TABLA {group.label}</h2>
+      <p class="progress-chip">
+        <span data-qualified-complete>0</span><span class="progress-sep">/</span><span data-qualified-total>6</span> partidos completos
+      </p>
+    </div>
   </div>
 
-  <QualifiedSelect place="first" label={`1° del ${group.label}`} teams={group.teams} />
-  <QualifiedSelect place="second" label={`2° del ${group.label}`} teams={group.teams} />
+  <div class="standings-table" role="table" aria-label={`Tabla de posiciones ${group.label}`}>
+    <div class="standings-head" role="row">
+      <span role="columnheader">POS</span>
+      <span role="columnheader">EQUIPO</span>
+      <span class="num-head" role="columnheader">PTS</span>
+      <span class="num-head" role="columnheader">DG</span>
+      <span class="num-head" role="columnheader">GF</span>
+    </div>
+    <div class="standings-body" data-standings-body role="rowgroup"></div>
+  </div>
 
-  <p class="error-message" data-qualified-error hidden>El 1° y 2° clasificado deben ser equipos distintos.</p>
+  <p class="qualified-summary" data-qualified-summary>
+    Completa los 6 marcadores para calcular 1° y 2° automaticamente.
+  </p>
+  <p class="auto-note">Clasificacion automatica segun tus marcadores.</p>
+
+  <button class="random-button" type="button" data-random-results>
+    <span class="dice-icon" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" focusable="false">
+        <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+        <circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" />
+        <circle cx="16" cy="8" r="1.25" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+        <circle cx="8" cy="16" r="1.25" fill="currentColor" stroke="none" />
+        <circle cx="16" cy="16" r="1.25" fill="currentColor" stroke="none" />
+      </svg>
+    </span>
+    <span class="random-label">RESULTADO RANDOM</span>
+  </button>
 </section>
 
 <style>
@@ -44,7 +72,7 @@ const { group } = Astro.props;
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.7rem;
     padding: 0.85rem;
     border: 1px solid var(--pm-border-blue);
     border-radius: var(--radius-lg);
@@ -63,30 +91,234 @@ const { group } = Astro.props;
     width: 2rem;
     aspect-ratio: 1;
     place-items: center;
+    flex: 0 0 auto;
     border-radius: var(--radius-sm);
     background: linear-gradient(135deg, var(--pm-yellow-500), var(--pm-orange-400, #f97316));
     color: var(--pm-white);
   }
 
   h2,
-  .error-message {
+  p {
     margin: 0;
   }
 
   h2 {
     color: var(--color-text);
     font-family: var(--font-display);
-    font-size: 1.08rem;
+    font-size: 1.05rem;
     font-weight: 950;
+    line-height: 1;
   }
 
-  .error-message {
-    padding: 0.55rem 0.65rem;
-    border: 1px solid var(--color-text);
-    border-radius: var(--radius-sm);
-    color: var(--color-text);
+  .progress-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18rem;
+    margin-top: 0.28rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: var(--pm-radius-pill);
+    background: color-mix(in srgb, var(--pm-blue-500) 12%, var(--pm-white));
+    color: var(--pm-blue-700);
+    font-size: 0.64rem;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .progress-chip [data-qualified-complete] {
+    color: var(--pm-blue-600);
+    font-family: var(--font-score);
     font-size: 0.78rem;
-    font-weight: 800;
-    line-height: 1.35;
+  }
+
+  .progress-sep {
+    opacity: 0.55;
+  }
+
+  /* ===== Tabla de clasificados ===== */
+  .standings-table {
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--pm-blue-500) 22%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--pm-ice) 60%, var(--pm-white));
+  }
+
+  .standings-head {
+    display: grid;
+    /* Columnas literales — deben coincidir con .standings-row y el inline de
+       predicciones.client.js (POS · EQUIPO · PTS · DG · GF). Mantener en sync. */
+    grid-template-columns: 2.2rem minmax(0, 1fr) 2.1rem 2.1rem 2.1rem;
+    gap: 0.3rem;
+    align-items: center;
+    padding: 0.5rem 0.6rem;
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--pm-blue-500) 16%, var(--pm-white)),
+      color-mix(in srgb, var(--pm-cyan-500) 12%, var(--pm-white))
+    );
+    color: var(--pm-blue-900);
+    font-size: 0.6rem;
+    font-weight: 950;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .standings-head .num-head {
+    text-align: center;
+  }
+
+  /* Filas inyectadas por client.js (innerHTML): el CSS scoped no las alcanza,
+     por eso se estilizan con :global. La grilla va con columnas LITERALES
+     (no var(): una custom property scoped no hereda al DOM inyectado).
+     client.js tambien la fija inline como respaldo. Mantener en sync. */
+  :global([data-section="predicciones"] [data-standings-body] .standings-row) {
+    display: grid;
+    grid-template-columns: 2.2rem minmax(0, 1fr) 2.1rem 2.1rem 2.1rem;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.6rem;
+    border-top: 1px solid color-mix(in srgb, var(--pm-blue-500) 14%, transparent);
+    min-height: 2.3rem;
+    color: var(--pm-text-main);
+    font-size: 0.76rem;
+    font-weight: 850;
+  }
+
+  :global([data-section="predicciones"] [data-standings-body] .standings-row:nth-child(odd)) {
+    background: color-mix(in srgb, var(--pm-blue-500) 4%, transparent);
+  }
+
+  :global([data-section="predicciones"] [data-standings-body] .standings-row[data-qualified="true"]) {
+    background: color-mix(in srgb, var(--pm-green-500) 15%, var(--pm-white));
+    box-shadow: inset 3px 0 0 var(--pm-green-500);
+  }
+
+  :global([data-section="predicciones"] [data-standings-body] .rank-badge) {
+    display: inline-grid;
+    width: 1.7rem;
+    min-height: 1.55rem;
+    place-items: center;
+    border-radius: var(--pm-radius-sm);
+    background: var(--pm-blue-600);
+    color: var(--pm-white);
+    font-family: var(--font-score);
+    font-size: 0.78rem;
+    font-weight: 900;
+  }
+
+  :global([data-section="predicciones"] [data-standings-body] .standings-row[data-qualified="true"] .rank-badge) {
+    background: linear-gradient(135deg, var(--pm-green-500), var(--pm-green-600));
+    color: var(--pm-white);
+  }
+
+  :global([data-section="predicciones"] [data-standings-body] .team-cell) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--pm-blue-900);
+    font-family: var(--font-display);
+    font-size: 0.86rem;
+    font-weight: 950;
+    text-transform: uppercase;
+  }
+
+  :global([data-section="predicciones"] [data-standings-body] .number-cell) {
+    text-align: center;
+    font-family: var(--font-score);
+    font-size: 0.88rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ===== Resumen + nota ===== */
+  .qualified-summary {
+    padding: 0.5rem 0.62rem;
+    border: 1px solid color-mix(in srgb, var(--pm-green-500) 34%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--pm-green-500) 10%, var(--pm-white));
+    color: var(--pm-blue-900);
+    font-size: 0.74rem;
+    font-weight: 900;
+    line-height: 1.3;
+  }
+
+  .auto-note {
+    color: var(--color-muted);
+    font-size: 0.64rem;
+    font-weight: 850;
+    line-height: 1.3;
+  }
+
+  /* ===== Boton random: bajito + ancho, dado a la izquierda ===== */
+  .random-button {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    min-height: 2.55rem;
+    margin-top: auto;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid var(--pm-purple-600);
+    border-radius: var(--pm-radius-md);
+    background: linear-gradient(135deg, var(--pm-purple-500), var(--pm-pink-500));
+    color: var(--pm-white);
+    cursor: pointer;
+    box-shadow: var(--pm-shadow-purple);
+    transition:
+      filter var(--pm-transition-fast),
+      transform var(--pm-transition-fast),
+      box-shadow var(--pm-transition-fast);
+  }
+
+  .random-label {
+    justify-self: center;
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 950;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+
+  .random-button:disabled {
+    cursor: not-allowed;
+    filter: grayscale(0.45) opacity(0.62);
+    box-shadow: none;
+  }
+
+  .random-button:focus-visible {
+    outline: none;
+    box-shadow: var(--pm-shadow-purple), var(--pm-focus-ring-pink);
+  }
+
+  .dice-icon {
+    display: grid;
+    width: 1.25rem;
+    aspect-ratio: 1;
+    place-items: center;
+    flex: 0 0 auto;
+  }
+
+  .dice-icon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .random-button:not(:disabled):hover {
+      transform: translateY(-1px);
+      filter: saturate(1.08) brightness(1.04);
+      box-shadow: 0 20px 34px rgba(124, 53, 255, 0.28);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .random-button,
+    .random-button:hover {
+      transform: none;
+    }
   }
 </style>
